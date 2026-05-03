@@ -703,29 +703,30 @@ def doctor(as_json: bool) -> None:
             ),
         )
 
-    try:
-        gov = governance.run_governance_check()
-        if gov.aligned:
-            add(
-                "governance_mirror",
-                True,
-                info=f"awac.yml ↔ {gov.governance_repo}/governance/product-structure.md aligned",
-            )
-        else:
-            first = gov.problems[0] if gov.problems else "divergence detected"
+    if os.environ.get("WSP_DOCTOR_GOVERNANCE") == "1":
+        try:
+            gov = governance.run_governance_check()
+            if gov.aligned:
+                add(
+                    "governance_mirror",
+                    True,
+                    info=f"awac.yml ↔ {gov.governance_repo}/governance/product-structure.md aligned",
+                )
+            else:
+                first = gov.problems[0] if gov.problems else "divergence detected"
+                add(
+                    "governance_mirror",
+                    False,
+                    info=f"{len(gov.problems)} problem(s); first: {first}",
+                    remediation="Run `wsp governance check` for the full list. Fix awac.yml or the governance doc.",
+                )
+        except errors.WspError as exc:
             add(
                 "governance_mirror",
                 False,
-                info=f"{len(gov.problems)} problem(s); first: {first}",
-                remediation="Run `wsp governance check` for the full list. Fix awac.yml or the governance doc.",
+                info=exc.cause,
+                remediation=exc.remediation,
             )
-    except errors.WspError as exc:
-        add(
-            "governance_mirror",
-            False,
-            info=exc.cause,
-            remediation=exc.remediation,
-        )
 
     summary_ok = all(c["status"] == "ok" for c in checks)
     payload = {"checks": checks, "ok": summary_ok}
