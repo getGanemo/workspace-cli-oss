@@ -1,0 +1,65 @@
+name: release
+
+# Build the wsp wheel + sdist on every push of a v* tag and attach them
+# to a GitHub Release. Users install via:
+#
+#   pipx install https://github.com/getGanemo/workspace-cli/releases/download/v0.4.0/wsp-0.4.0-py3-none-any.whl
+#
+# (For private repos, prefix the URL with `https://x-access-token:${GH_TOKEN}@…`
+# or download the asset first with `gh release download`.)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build a release for, e.g. v0.4.0"
+        required: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (tag from push or manual input)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF##refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update GitHub Release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Automated release from $TAG. See CHANGELOG / commit log." \
+              dist/*.whl dist/*.tar.gz
+          fi

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/getGanemo/workspace-cli/schemas/workspace.schema.json",
+  "title": "AWaC workspace.yml",
+  "type": "object",
+  "required": ["name", "schema", "stacks"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name of this workspace."
+    },
+    "schema": {
+      "type": "string",
+      "enum": ["awac/1"],
+      "description": "AWaC schema version this manifest conforms to."
+    },
+    "stacks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Either a registry shortcut ('core') or full 'org/repo'."
+          },
+          {
+            "type": "object",
+            "required": ["ref"],
+            "additionalProperties": false,
+            "properties": {
+              "ref": { "type": "string" },
+              "branch": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["org", "modules"],
+            "additionalProperties": false,
+            "description": "Special block for Odoo modules (resolved per the org's module_convention).",
+            "properties": {
+              "org": { "type": "string" },
+              "modules": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              },
+              "branch": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "modules": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Top-level Odoo module list (alternative to per-stack 'org+modules')."
+    },
+    "extra_repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["org", "repo"],
+        "additionalProperties": false,
+        "properties": {
+          "org": { "type": "string" },
+          "repo": { "type": "string" },
+          "branch": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "agent_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canonical": { "type": "string" },
+        "mirrors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

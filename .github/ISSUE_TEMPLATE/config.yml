@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/getGanemo/workspace-cli/discussions
+    about: Questions, ideas, show & tell. Most non-bug conversations belong here.
+  - name: Security vulnerabilities
+    url: https://github.com/getGanemo/workspace-cli/blob/main/SECURITY.md
+    about: For security issues, please email fernando@ganemo.co — do not open public issues.

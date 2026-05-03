@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/getGanemo/workspace-cli/schemas/awac.schema.json",
+  "title": "AWaC stack awac.yml",
+  "type": "object",
+  "properties": {
+    "product": { "type": "string" },
+    "scope": { "type": "string" },
+    "shortcuts": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "(Registry only) shortcut → org/repo."
+    },
+    "templates": {
+      "type": "array",
+      "description": "(Registry only) catalog of templates.",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    },
+    "agent_context": {
+      "type": "object",
+      "properties": {
+        "canonical": { "type": "string" },
+        "mirrors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "org_scaffold": { "type": "object" },
+    "module_convention": {
+      "type": "object",
+      "properties": {
+        "default_org": { "type": "string" },
+        "path_prefix": { "type": "string" },
+        "branch_default": { "type": "string" },
+        "repo_pattern": { "type": "string" }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "org": { "type": "string" },
+          "branch_default": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

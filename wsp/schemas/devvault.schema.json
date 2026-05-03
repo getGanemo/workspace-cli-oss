@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/getGanemo/workspace-cli/wsp/schemas/devvault.schema.json",
+  "title": "AWaC <product>/agent-stack/devvault.yml",
+  "description": "Per-product CATALOG of secrets needed to operate the product. Pure pointers — never holds the secret value itself. Resolves against ~/.devvault/.config.yml#vault_path on each developer's machine. The vault_path is per-machine (different developers may keep their .devvault elsewhere) and MUST NOT be committed in this catalog.",
+  "type": "object",
+  "required": ["schema", "product", "secrets"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "devvault/1"
+    },
+    "product": {
+      "type": "string",
+      "description": "Product slug (lowercased, no `get` prefix). Must match the agent-stack's awac.yml product field."
+    },
+    "description": {
+      "type": "string"
+    },
+    "secrets": {
+      "type": "object",
+      "description": "Mapping logical_name -> path (relative to ~/.devvault/<vault_path_root>/). Logical names are stable; paths are conventions of how secrets are organized inside the vault.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

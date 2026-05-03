@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/getGanemo/workspace-cli/schemas/lock.schema.json",
+  "title": "AWaC workspace.lock.yml",
+  "type": "object",
+  "required": ["schema", "generated_at", "stacks"],
+  "properties": {
+    "schema": { "type": "string", "enum": ["awac/1"] },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "wsp_version": { "type": "string" },
+    "stacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo", "ref", "commit"],
+        "properties": {
+          "repo": { "type": "string" },
+          "ref": { "type": "string" },
+          "commit": { "type": "string" }
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo", "ref", "commit", "path"],
+        "properties": {
+          "repo": { "type": "string" },
+          "ref": { "type": "string" },
+          "commit": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

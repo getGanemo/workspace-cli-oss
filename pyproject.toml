@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wsp"
+version = "1.0.0"
+description = "wsp — the AWaC (Agent Workspace as Code) CLI. Compose AI-agent workspaces declaratively from versioned stack repos."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Fernando Pastor", email = "fernando@ganemo.co" },
+]
+keywords = ["awac", "agents", "workspace", "claude", "cursor", "ai", "agent-tooling"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "click>=8.1",
+  "pyyaml>=6.0",
+  "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+]
+
+[project.scripts]
+wsp = "wsp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/getGanemo/workspace-cli-oss"
+Documentation = "https://awac.ganemo.com"
+Specification = "https://gist.github.com/GanemoCorp/fdc1042067615003e8aa4a8406198a61"
+Issues = "https://github.com/getGanemo/workspace-cli-oss/issues"
+Discussions = "https://github.com/getGanemo/workspace-cli-oss/discussions"
+Changelog = "https://github.com/getGanemo/workspace-cli-oss/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wsp*"]
+
+[tool.setuptools.package-data]
+"wsp" = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
