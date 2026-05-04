@@ -4,6 +4,42 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-04
+
+A workspace-as-product overlay release. Schemas `workspace/2` and `deploy/2` are introduced (alongside `awac/1` + `deploy/1`, which remain fully supported), giving workspaces a way to pin per-workspace deploy and devvault variations without forking the canonical stack metadata. Bootstrap also now materializes the product stack's metadata into `.stack/<product>/` for discoverability, and a new `wsp guide <topic>` command + a fresh-dir help banner make AWaC self-explanatory to agents that arrive without `.agents/` loaded.
+
+### Added
+- Schemas `workspace/2`, `deploy/2`, plus `lock/2`-shaped extensions:
+  - `workspace.yml`: optional `deploy_overrides`, `devvault_overrides`, `product` fields. Schema enum gains `awac/2`.
+  - `deploy.yml`: optional `targets_available` per component, schema enum gains `deploy/2`.
+  - `workspace.lock.yml`: optional `stack_metadata` array of `{product, file, sha256, source_repo, source_commit}` entries.
+- `wsp bootstrap` now materializes `.stack/<product>/{README.md, awac.yml, devvault.yml, deploy.yml}` for every stack whose `awac.yml` declares a `product`. Each file is prepended with a `SYNCED FROM` header (YAML or HTML form depending on the extension); the body hash is written to the lock so `wsp doctor` can detect drift.
+- `wsp sync` re-materializes `.stack/<product>/` and refreshes the lock's `stack_metadata` (without touching cloned product repos).
+- `wsp doctor` gains a `stack_metadata_drift` step that diff-hashes the workspace's `.stack/<product>/*` against the lock entries.
+- `wsp deploy <product>` resolves `workspace.yml#deploy_overrides` on top of the stack's deploy.yml when run from inside a workspace dir. New `--no-overrides` flag prints raw stack defaults. Plaintext output now flags overridden components with `(workspace override applied)` and lists the changed fields.
+- `wsp secrets check <product>` resolves `workspace.yml#devvault_overrides` on top of the catalog. New `--no-overrides` flag. Plaintext output marks overridden entries with `(workspace override)`.
+- `wsp init` gains `--interactive`/`-i` and `--yes`/`-y` flags. Product templates (paths under `<product>/agent-stack/templates/`) now refuse to scaffold without explicit confirmation (error `WSP_020`).
+- `wsp guide <topic>` — embedded guides for `init`, `onboard-product`, `deploy`, `secrets`, `discover`. `wsp guide` (no topic) lists topics. Designed for agents that arrive without `.agents/` loaded.
+- `wsp migrate-deploy <product>` — upgrades a `deploy/1` spec in the cached stack repo to `deploy/2`, adding a single-element `targets_available` list per component (conservative; broaden manually before PR).
+- `wsp` invoked at the root with no subcommand AND no `workspace.yml` in CWD now prints a banner pointing at `wsp guide init`, `wsp init --interactive`, and `wsp guide discover` before the standard help.
+- `wsp templates --json` now exposes per-template `requires_confirmation`, `composes_stacks`, `clones_repos`, `embeds_in_product_flow`. Plaintext mode flags product templates with a `[product]` marker.
+- New error codes: `WSP_018` (overrides require schema awac/2), `WSP_019` (override target not in `targets_available`), `WSP_020` (product template without confirmation), `WSP_021` (stack metadata drift).
+
+### Changed
+- `__schema__` is now `awac/2`. The CLI accepts both `awac/1` and `awac/2` manifests (overrides require `awac/2`).
+- Bootstrap and sync write `schema: awac/2` to the lock when `stack_metadata` is non-empty; otherwise stay at `awac/1` for backwards compat.
+- Plaintext `wsp bootstrap` output now appends a `stack metadata materialized:` block listing materialized files plus suggested next-step commands (`wsp secrets check`, `wsp deploy`).
+- `wsp deploy` schema validation accepts both `deploy/1` and `deploy/2`.
+
+### Migration
+- Existing `awac/1` workspaces: no action required. Continue working unchanged.
+- To use deploy/devvault overrides in a workspace: bump the manifest's `schema: awac/1` to `schema: awac/2` and add `deploy_overrides:` / `devvault_overrides:` blocks. Re-run `wsp bootstrap`.
+- To upgrade a product's deploy.yml to v2: run `wsp migrate-deploy <product>`, review the patched file, and PR it back to the canonical `<product>/agent-stack` repo.
+- After bumping `wsp` to 1.1.0, run `wsp bootstrap` once in each existing workspace whose stack publishes a `product` — this materializes `.stack/<product>/` so `wsp doctor` can track drift.
+
+### Internal
+- 27 new tests across 7 new files. Total: 84/84 passing.
+
 ## [1.0.0] — 2026-05-03
 
 ### First public release
@@ -103,7 +139,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v0.9.0...v1.0.0
 [0.9.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v0.7.0...v0.8.0

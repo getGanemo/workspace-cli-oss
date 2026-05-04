@@ -52,8 +52,8 @@ ORG_SCAFFOLD = {
 
 def test_org_to_product_strips_get_prefix():
     assert org_to_product("getGanemo") == "ganemo"
-    assert org_to_product("getatlas") == "atlas"
-    assert org_to_product("getcobalt") == "cobalt"
+    assert org_to_product("getAtlas") == "atlas"
+    assert org_to_product("getCobalt") == "cobalt"
     assert org_to_product("Delta") == "delta"
     assert org_to_product("acme") == "acme"
     assert org_to_product("widget") == "widget"
@@ -150,7 +150,7 @@ def test_write_seed_creates_full_layout(tmp_path: Path):
 
 
 def test_write_seed_blank_cat_a_for_lazy_org(tmp_path: Path):
-    write_seed(tmp_path, "getcobalt", "cobalt", classified=[], odoo_modules=[], cat_a_blank=True)
+    write_seed(tmp_path, "cobalt-org", "cobalt", classified=[], odoo_modules=[], cat_a_blank=True)
     awac = (tmp_path / "awac.yml").read_text()
     assert "scaffold inicial" in awac
     assert "cobalt" in awac.lower()

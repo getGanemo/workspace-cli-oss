@@ -9,7 +9,7 @@ from wsp.registry import Registry, StackRef, Template
 def _reg(shortcuts):
     return Registry(
         raw={},
-        repo="getGanemo/agent-stack-core",
+        repo="getGanemo/agent-stack-core-oss",
         branch="main",
         local_path=Path("."),
         shortcuts=shortcuts,
@@ -19,16 +19,16 @@ def _reg(shortcuts):
 
 
 def test_resolve_shortcut():
-    reg = _reg({"core": "getGanemo/agent-stack-core", "acme": "acme/agent-stack"})
+    reg = _reg({"core": "getGanemo/agent-stack-core-oss", "acme": "acme/agent-stack"})
     ref = reg.resolve("core")
     assert isinstance(ref, StackRef)
     assert ref.org == "getGanemo"
-    assert ref.repo == "agent-stack-core"
+    assert ref.repo == "agent-stack-core-oss"
     assert ref.shortcut == "core"
 
 
 def test_resolve_full_path():
-    reg = _reg({"core": "getGanemo/agent-stack-core"})
+    reg = _reg({"core": "getGanemo/agent-stack-core-oss"})
     ref = reg.resolve("custom-org/custom-repo")
     assert ref.org == "custom-org"
     assert ref.repo == "custom-repo"
@@ -36,7 +36,7 @@ def test_resolve_full_path():
 
 
 def test_resolve_unknown_shortcut():
-    reg = _reg({"core": "getGanemo/agent-stack-core"})
+    reg = _reg({"core": "getGanemo/agent-stack-core-oss"})
     with pytest.raises(errors.WspError) as exc:
         reg.resolve("definitely-not-there")
     assert exc.value.code == "WSP_003"

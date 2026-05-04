@@ -30,6 +30,7 @@ class SecretEntry:
     resolved_path: str
     exists: bool
     readable: bool
+    workspace_override: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,6 +39,7 @@ class SecretEntry:
             "resolved_path": self.resolved_path,
             "exists": self.exists,
             "readable": self.readable,
+            "workspace_override": self.workspace_override,
         }
 
 
@@ -115,7 +117,10 @@ def _resolve_vault_path() -> Path:
     return Path(vp)
 
 
-def run_secrets_check(product: str) -> SecretsCheckResult:
+def run_secrets_check(
+    product: str,
+    workspace_overrides: dict[str, str] | None = None,
+) -> SecretsCheckResult:
     catalog_path = _resolve_catalog_path(product)
     if not catalog_path.exists():
         raise errors.WspError(
@@ -154,16 +159,20 @@ def run_secrets_check(product: str) -> SecretsCheckResult:
         vault_path=str(vault_path),
     )
 
+    overrides = workspace_overrides or {}
     for logical_name, rel in (raw.get("secrets") or {}).items():
-        resolved = vault_path / rel
+        is_override = logical_name in overrides
+        effective_rel = overrides[logical_name] if is_override else rel
+        resolved = vault_path / effective_rel
         exists = resolved.exists()
         readable = exists and os.access(resolved, os.R_OK)
         result.entries.append(SecretEntry(
             logical_name=logical_name,
-            relative_path=rel,
+            relative_path=effective_rel,
             resolved_path=str(resolved),
             exists=exists,
             readable=readable,
+            workspace_override=is_override,
         ))
 
     return result

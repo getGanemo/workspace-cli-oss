@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 from importlib import resources
@@ -33,6 +34,8 @@ from wsp import __schema__ as WSP_SCHEMA
 from wsp import __version__ as WSP_VERSION
 from wsp import audit_action, bootstrap_action, deploy_action, errors, git_ops, governance, manifest, registry, scaffold_repo_action, scaffold_stack_action, secrets_action, status_action, sync_action
 
+import hashlib
+
 
 AGENT_MANIFEST = {
     "name": "wsp",
@@ -44,16 +47,18 @@ AGENT_MANIFEST = {
     "commands": [
         {
             "name": "init",
-            "summary": "Scaffold a new workspace.yml from a registry template.",
+            "summary": "Scaffold a new workspace.yml from a registry template. Product templates require --yes or --interactive.",
             "args": [
-                {"name": "name", "required": True},
+                {"name": "name", "required": False, "description": "Required unless --interactive."},
             ],
             "options": [
                 {"name": "--template", "default": "blank"},
                 {"name": "--target", "default": "<cwd>/<name>"},
+                {"name": "--interactive", "type": "flag", "short": "-i"},
+                {"name": "--yes", "type": "flag", "short": "-y", "description": "Confirm product templates non-interactively."},
                 {"name": "--json", "type": "flag"},
             ],
-            "json_keys": ["workspace", "name", "template", "path"],
+            "json_keys": ["workspace", "name", "template", "path", "interactive", "confirmed"],
         },
         {
             "name": "bootstrap",
@@ -106,21 +111,25 @@ AGENT_MANIFEST = {
         },
         {
             "name": "deploy",
-            "summary": "Plan a deploy of <product> from <product>/agent-stack/deploy.yml. Validates schema deploy/1.",
+            "summary": "Plan a deploy of <product> from <product>/agent-stack/deploy.yml. Validates schema deploy/1 or deploy/2. When run inside a workspace dir, applies workspace.yml#deploy_overrides.",
             "args": [{"name": "product", "required": True}],
             "options": [
                 {"name": "--component", "required": False},
                 {"name": "--plan", "type": "flag", "default": True},
+                {"name": "--no-overrides", "type": "flag", "description": "Ignore workspace deploy_overrides."},
                 {"name": "--json", "type": "flag"},
             ],
-            "json_keys": ["product", "spec_path", "validated", "components"],
+            "json_keys": ["product", "spec_path", "validated", "overrides_applied", "components", "skipped_components"],
         },
         {
             "name": "secrets",
-            "summary": "Per-product devvault inspection. Subcommand: check.",
+            "summary": "Per-product devvault inspection. Subcommand: check. When run inside a workspace dir, applies workspace.yml#devvault_overrides.",
             "args": [{"name": "subcommand", "required": True, "choices": ["check"]},
                      {"name": "product", "required": True}],
-            "options": [{"name": "--json", "type": "flag"}],
+            "options": [
+                {"name": "--no-overrides", "type": "flag", "description": "Ignore workspace devvault_overrides."},
+                {"name": "--json", "type": "flag"},
+            ],
             "json_keys": ["product", "vault_path", "entries", "summary"],
         },
         {
@@ -138,7 +147,7 @@ AGENT_MANIFEST = {
         },
         {
             "name": "templates",
-            "summary": "List templates available in the registry.",
+            "summary": "List templates available in the registry. With --json, exposes requires_confirmation, composes_stacks, clones_repos, embeds_in_product_flow per template.",
             "options": [{"name": "--json", "type": "flag"}],
             "json_keys": ["templates"],
         },
@@ -158,6 +167,19 @@ AGENT_MANIFEST = {
             "name": "schema",
             "summary": "Print the JSON Schema for workspace, awac, lock, deploy, or devvault.",
             "args": [{"name": "kind", "required": True, "choices": ["workspace", "awac", "lock", "deploy", "devvault"]}],
+        },
+        {
+            "name": "guide",
+            "summary": "Print embedded guide text for a topic. Topics: init, onboard-product, deploy, secrets, discover. With no topic, lists topics.",
+            "args": [{"name": "topic", "required": False, "choices": ["init", "onboard-product", "deploy", "secrets", "discover"]}],
+            "options": [{"name": "--json", "type": "flag"}],
+        },
+        {
+            "name": "migrate-deploy",
+            "summary": "Upgrade a product's deploy/1 spec in the cached stack repo to deploy/2. Adds a single-element targets_available list to each component (conservative).",
+            "args": [{"name": "product", "required": True}],
+            "options": [{"name": "--json", "type": "flag"}],
+            "json_keys": ["stack_repo", "patched_path", "cache_path", "component_count", "noop"],
         },
     ],
     "errors": {
@@ -215,25 +237,88 @@ def _print_agent_manifest(ctx: click.Context, _param: click.Parameter, value: bo
 def main(ctx: click.Context) -> None:
     """wsp — Agent Workspace as Code (AWaC) CLI."""
     if ctx.invoked_subcommand is None:
+        if not (Path.cwd() / "workspace.yml").exists():
+            click.echo("You are in an empty workspace. To get started:")
+            click.echo("  wsp guide init                # read the path before acting")
+            click.echo("  wsp init --interactive        # interactive setup")
+            click.echo("  wsp init <name> --template blank   # quick non-interactive")
+            click.echo("")
+            click.echo("For agents discovering AWaC for the first time:")
+            click.echo("  wsp guide discover")
+            click.echo("")
         click.echo(ctx.get_help())
         ctx.exit()
 
 
+_KEBAB_CASE_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+
+
+def _validate_workspace_name(value: str) -> str:
+    if not _KEBAB_CASE_RE.match(value):
+        raise click.BadParameter(
+            f"{value!r} is not valid: use kebab-case lowercase ASCII, no leading digit "
+            "(e.g. 'my-feature')."
+        )
+    return value
+
+
 @main.command()
-@click.argument("name")
-@click.option("--template", "template_name", default="blank", show_default=True)
+@click.argument("name", required=False, default=None)
+@click.option("--template", "template_name", default=None,
+              help="Template name (default: blank in non-interactive; ignored if --interactive).")
 @click.option("--target", "target_path", default=None, help="Where to scaffold (default: <cwd>/<name>).")
+@click.option("--interactive", "-i", "interactive", is_flag=True,
+              help="Interactive mode: pick template + workspace name from prompts.")
+@click.option("--yes", "-y", "yes", is_flag=True,
+              help="Confirm product templates non-interactively.")
 @click.option("--json", "as_json", is_flag=True)
-def init(name: str, template_name: str, target_path: str | None, as_json: bool) -> None:
+def init(name: str | None, template_name: str | None, target_path: str | None,
+         interactive: bool, yes: bool, as_json: bool) -> None:
     """Scaffold a new workspace.yml from a registry template."""
     try:
+        reg = registry.load_registry()
+
+        if interactive:
+            click.echo("available templates:")
+            for t in reg.templates:
+                click.echo(f"  - {t.name:28s} {t.description}")
+            template_name = click.prompt("template name", type=str)
+            ws_name = click.prompt("workspace name", type=str, value_proc=_validate_workspace_name)
+            template = reg.template(template_name)
+            template = registry.enrich_template_metadata(template)
+            if template.is_product_template:
+                clones = ", ".join(template.clones_repos) or "(none)"
+                composes = ", ".join(template.composes_stacks) or "(none)"
+                click.echo(
+                    f"This will clone {len(template.clones_repos)} repos: {clones}\n"
+                    f"and compose stacks: {composes}.\n"
+                    f"Embeds workspace in product flow: {template.embeds_in_product_flow or 'n/a'}"
+                )
+                if not click.confirm("Continue?", default=False):
+                    click.echo("aborted.")
+                    sys.exit(1)
+            name = ws_name
+        else:
+            if not name:
+                raise click.UsageError("Missing argument 'NAME' (or use --interactive).")
+            if template_name is None:
+                template_name = "blank"
+
         target = Path(target_path) if target_path else Path.cwd() / name
         target.mkdir(parents=True, exist_ok=True)
         if (target / "workspace.yml").exists():
             raise errors.target_not_empty(str(target))
 
-        reg = registry.load_registry()
         template = reg.template(template_name)
+        template = registry.enrich_template_metadata(template)
+
+        if template.is_product_template and not (yes or interactive):
+            raise errors.product_template_requires_confirmation(
+                template=template_name,
+                composes_stacks=template.composes_stacks,
+                clones_repos=template.clones_repos,
+            )
+
         text = registry.fetch_template_text(reg, template)
         text = text.replace("<CHANGE-ME>", name)
         (target / "workspace.yml").write_text(text, encoding="utf-8")
@@ -244,6 +329,8 @@ def init(name: str, template_name: str, target_path: str | None, as_json: bool) 
                 "name": name,
                 "template": template_name,
                 "path": str(target.resolve()),
+                "interactive": interactive,
+                "confirmed": bool(yes or interactive),
             },
             as_json,
         )
@@ -261,9 +348,71 @@ def bootstrap(update_locks: bool, as_json: bool) -> None:
         m = manifest.load_manifest(ws_path)
         reg = registry.load_registry()
         result = bootstrap_action.run_bootstrap(Path.cwd(), m, reg)
-        _emit(result.to_dict(), as_json)
+        if as_json:
+            _emit(result.to_dict(), as_json=True)
+        else:
+            _print_bootstrap_plaintext(result)
     except errors.WspError as exc:
         _emit_error(exc, as_json)
+
+
+def _print_bootstrap_plaintext(result: "bootstrap_action.BootstrapResult") -> None:
+    payload = result.to_dict()
+    for k, v in payload.items():
+        if k == "stack_metadata":
+            continue
+        click.echo(f"{k}: {v}")
+    if result.stack_metadata:
+        click.echo("\nstack metadata materialized:")
+        by_product: dict[str, list[str]] = {}
+        for entry in result.stack_metadata:
+            by_product.setdefault(entry["product"], []).append(
+                Path(entry["file"]).name
+            )
+        for product, files in by_product.items():
+            click.echo(f"  [{product}] .stack/{product}/{{{', '.join(files)}}}")
+            workspace_root = Path(result.lock_path).parent if result.lock_path else Path.cwd()
+            for hint in _stack_metadata_next_steps(workspace_root, product, files):
+                click.echo(f"    → {hint}")
+
+
+def _stack_metadata_next_steps(
+    workspace_root: Path, product: str, files: list[str]
+) -> list[str]:
+    """Suggest concrete next-step commands based on what was materialized."""
+    hints: list[str] = []
+    if "devvault.yml" in files:
+        path = workspace_root / ".stack" / product / "devvault.yml"
+        n = 0
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            from wsp import bootstrap_action as _ba
+
+            body = _ba._strip_synced_header(path.read_text(encoding="utf-8"))
+            data = yaml.safe_load(body) or {}
+            n = len((data.get("secrets") or {}))
+        except Exception:
+            n = 0
+        hints.append(
+            f"{n} secrets declared. Validate your local vault: "
+            f"`wsp secrets check {product}`"
+        )
+    if "deploy.yml" in files:
+        path = workspace_root / ".stack" / product / "deploy.yml"
+        n = 0
+        try:
+            from wsp import bootstrap_action as _ba
+
+            body = _ba._strip_synced_header(path.read_text(encoding="utf-8"))
+            data = yaml.safe_load(body) or {}
+            n = len((data.get("components") or []))
+        except Exception:
+            n = 0
+        hints.append(
+            f"{n} deploy components declared. Plan a deploy: "
+            f"`wsp deploy {product}`"
+        )
+    return hints
 
 
 @main.command()
@@ -440,33 +589,60 @@ def _print_scaffold_plaintext(result) -> None:
               help="Filter to a single component (by name) instead of all.")
 @click.option("--plan", "plan_only", is_flag=True, default=True,
               help="Plan-only mode (default). The CLI never performs the actual deploy — that is done by the deploy_product workflow + per-target topical workflow per the use_deploy_spec rule.")
+@click.option("--no-overrides", "no_overrides", is_flag=True,
+              help="Ignore workspace.yml#deploy_overrides and show raw stack defaults.")
 @click.option("--json", "as_json", is_flag=True)
-def deploy(product: str, component_name: str | None, plan_only: bool, as_json: bool) -> None:
+def deploy(product: str, component_name: str | None, plan_only: bool, no_overrides: bool, as_json: bool) -> None:
     """Plan a deploy of <product>: read + validate <product>/agent-stack/deploy.yml.
 
     Always plan-only at the CLI level. Actual execution is workflow-driven
     (see `getGanemo/agent-stack-core-oss/workflows/deploy_product.md`).
     """
     try:
-        result = deploy_action.run_deploy_plan(product, component_name)
+        overrides: dict[str, dict[str, Any]] = {}
+        skipped: list[str] = []
+        if not no_overrides:
+            ws_yml = Path.cwd() / "workspace.yml"
+            if ws_yml.exists():
+                try:
+                    m = manifest.load_manifest(ws_yml)
+                    overrides = dict(m.deploy_overrides)
+                except errors.WspError:
+                    overrides = {}
+        result = deploy_action.run_deploy_plan(product, component_name, overrides)
+        # Compute skipped: components in spec where override.skip is True
+        if overrides:
+            for cname, cov in overrides.items():
+                if cov.get("skip") is True:
+                    skipped.append(cname)
         if as_json:
-            _emit(result.to_dict(), as_json=True)
+            payload = result.to_dict()
+            payload["skipped_components"] = skipped
+            _emit(payload, as_json=True)
         else:
-            _print_deploy_plan_plaintext(result)
+            _print_deploy_plan_plaintext(result, skipped=skipped)
     except errors.WspError as exc:
         _emit_error(exc, as_json)
 
 
-def _print_deploy_plan_plaintext(result) -> None:
+def _print_deploy_plan_plaintext(result, skipped: list[str] | None = None) -> None:
+    skipped = skipped or []
     click.echo(f"product: {result.product}")
     click.echo(f"spec: {result.spec_path}")
     click.echo(f"validated: {'yes' if result.validated else 'no'}")
+    if result.overrides_applied:
+        click.echo("workspace overrides: applied")
     click.echo("\ncomponents:")
-    if not result.components:
+    if not result.components and not skipped:
         click.echo("  (none — pass --component to filter, or check the spec)")
     for c in result.components:
         approval = "human-ack" if c.requires_human_approval else "auto"
-        click.echo(f"  - {c.name}  [{c.target}]  ({approval})")
+        suffix = ""
+        if c.workspace_override_applied:
+            suffix = "  (workspace override applied)"
+        click.echo(f"  - {c.name}  [{c.target}]  ({approval}){suffix}")
+        if c.workspace_override_applied and c.overridden_fields:
+            click.echo(f"      overridden_fields: {', '.join(c.overridden_fields)}")
         if c.repo:
             click.echo(f"      repo: {c.repo}")
         if c.pre_steps:
@@ -477,6 +653,8 @@ def _print_deploy_plan_plaintext(result) -> None:
         for promo in c.promote_after_pass:
             tail = f" (require_pass_on={promo['require_pass_on']})" if promo.get("require_pass_on") else ""
             click.echo(f"      promote -> {promo['target_repo']}@{promo['target_branch']}{tail}")
+    for sk in skipped:
+        click.echo(f"  - {sk}  (skipped per workspace override)")
     click.echo(
         "\nThis is a plan. Actual execution is workflow-driven — invoke "
         "`deploy_product` workflow in any active stack to run it."
@@ -521,15 +699,26 @@ def secrets() -> None:
 
 @secrets.command(name="check")
 @click.argument("product")
+@click.option("--no-overrides", "no_overrides", is_flag=True,
+              help="Ignore workspace.yml#devvault_overrides and show raw catalog paths.")
 @click.option("--json", "as_json", is_flag=True)
-def secrets_check(product: str, as_json: bool) -> None:
+def secrets_check(product: str, no_overrides: bool, as_json: bool) -> None:
     """Check that every secret cataloged for <product> resolves on this machine.
 
     Reads <product>/agent-stack/devvault.yml + ~/.devvault/.config.yml.
     Reports per-entry: exists / readable. Never prints secret values.
     """
     try:
-        result = secrets_action.run_secrets_check(product)
+        overrides: dict[str, str] = {}
+        if not no_overrides:
+            ws_yml = Path.cwd() / "workspace.yml"
+            if ws_yml.exists():
+                try:
+                    m = manifest.load_manifest(ws_yml)
+                    overrides = dict(m.devvault_overrides)
+                except errors.WspError:
+                    overrides = {}
+        result = secrets_action.run_secrets_check(product, overrides)
         if as_json:
             _emit(result.to_dict(), as_json=True, exit_code=0 if result.all_present else 1)
         else:
@@ -538,7 +727,8 @@ def secrets_check(product: str, as_json: bool) -> None:
             click.echo(f"vault: {result.vault_path}\n")
             for e in result.entries:
                 marker = "ok" if e.exists and e.readable else ("missing" if not e.exists else "unreadable")
-                click.echo(f"  [{marker}] {e.logical_name:14s} -> {e.relative_path}")
+                ovr = "  (workspace override)" if e.workspace_override else ""
+                click.echo(f"  [{marker}] {e.logical_name:14s} -> {e.relative_path}{ovr}")
             if not result.all_present:
                 click.echo("\nSome secrets are missing or unreadable. See `use_devvault` rule.")
                 sys.exit(1)
@@ -597,15 +787,13 @@ def templates(as_json: bool) -> None:
     """List templates available in the registry."""
     try:
         reg = registry.load_registry()
-        items = [
-            {"name": t.name, "description": t.description, "path": t.path}
-            for t in reg.templates
-        ]
         if as_json:
+            items = [registry.enrich_template_metadata(t).to_dict() for t in reg.templates]
             _emit({"templates": items}, as_json=True)
         else:
-            for t in items:
-                click.echo(f"{t['name']:28s} {t['description']}")
+            for t in reg.templates:
+                marker = "[product]" if t.is_product_template else "         "
+                click.echo(f"{marker} {t.name:28s} {t.description}")
     except errors.WspError as exc:
         _emit_error(exc, as_json)
 
@@ -703,30 +891,31 @@ def doctor(as_json: bool) -> None:
             ),
         )
 
-    if os.environ.get("WSP_DOCTOR_GOVERNANCE") == "1":
-        try:
-            gov = governance.run_governance_check()
-            if gov.aligned:
-                add(
-                    "governance_mirror",
-                    True,
-                    info=f"awac.yml ↔ {gov.governance_repo}/governance/product-structure.md aligned",
-                )
-            else:
-                first = gov.problems[0] if gov.problems else "divergence detected"
-                add(
-                    "governance_mirror",
-                    False,
-                    info=f"{len(gov.problems)} problem(s); first: {first}",
-                    remediation="Run `wsp governance check` for the full list. Fix awac.yml or the governance doc.",
-                )
-        except errors.WspError as exc:
+    try:
+        gov = governance.run_governance_check()
+        if gov.aligned:
+            add(
+                "governance_mirror",
+                True,
+                info=f"awac.yml ↔ {gov.governance_repo}/governance/product-structure.md aligned",
+            )
+        else:
+            first = gov.problems[0] if gov.problems else "divergence detected"
             add(
                 "governance_mirror",
                 False,
-                info=exc.cause,
-                remediation=exc.remediation,
+                info=f"{len(gov.problems)} problem(s); first: {first}",
+                remediation="Run `wsp governance check` for the full list. Fix awac.yml or the governance doc.",
             )
+    except errors.WspError as exc:
+        add(
+            "governance_mirror",
+            False,
+            info=exc.cause,
+            remediation=exc.remediation,
+        )
+
+    _stack_metadata_drift_check(Path.cwd(), add)
 
     summary_ok = all(c["status"] == "ok" for c in checks)
     payload = {"checks": checks, "ok": summary_ok}
@@ -742,6 +931,60 @@ def doctor(as_json: bool) -> None:
             sys.exit(2)
 
 
+def _stack_metadata_drift_check(workspace_root: Path, add) -> None:
+    """Compare the workspace's .stack/<product>/* hashes against the lock entries."""
+    lock_path = workspace_root / "workspace.lock.yml"
+    if not lock_path.exists():
+        add("stack_metadata_drift", True, info="no workspace in cwd")
+        return
+    try:
+        lock = yaml.safe_load(lock_path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        add(
+            "stack_metadata_drift",
+            False,
+            info=f"could not parse {lock_path}: {exc}",
+            remediation="Fix YAML in workspace.lock.yml or re-run `wsp bootstrap`.",
+        )
+        return
+    entries = lock.get("stack_metadata") or []
+    if not entries:
+        add("stack_metadata_drift", True, info="0 stack metadata files in sync with lock")
+        return
+    drifted: list[str] = []
+    for entry in entries:
+        rel = entry.get("file")
+        expected = entry.get("sha256")
+        if not rel or not expected:
+            continue
+        target = workspace_root / rel
+        if not target.exists():
+            drifted.append(rel)
+            continue
+        text = target.read_text(encoding="utf-8")
+        body = bootstrap_action._strip_synced_header(text)
+        actual = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        if actual != expected:
+            drifted.append(rel)
+    if drifted:
+        add(
+            "stack_metadata_drift",
+            False,
+            info=f"{len(drifted)} drifted: {', '.join(drifted)}",
+            remediation=(
+                "Edit canonical files in the stack repo, push, then 'wsp sync' "
+                "here. To intentionally diverge for this workspace, use "
+                "workspace.yml#deploy_overrides or #devvault_overrides instead."
+            ),
+        )
+    else:
+        add(
+            "stack_metadata_drift",
+            True,
+            info=f"{len(entries)} stack metadata files in sync with lock",
+        )
+
+
 def _is_writable(path: Path) -> bool:
     try:
         path.mkdir(parents=True, exist_ok=True)
@@ -751,6 +994,111 @@ def _is_writable(path: Path) -> bool:
         return True
     except OSError:
         return False
+
+
+@main.command()
+@click.argument("topic", required=False, default=None)
+@click.option("--json", "as_json", is_flag=True)
+def guide(topic: str | None, as_json: bool) -> None:
+    """Print embedded guide text for a topic, or list topics if none given."""
+    from wsp.guides import GUIDE_TOPICS
+    try:
+        if topic is None:
+            if as_json:
+                _emit({"topics": [{"name": k, "summary": v} for k, v in GUIDE_TOPICS.items()]}, as_json=True)
+            else:
+                click.echo("available topics:")
+                for k, v in GUIDE_TOPICS.items():
+                    click.echo(f"  {k:18s} {v}")
+                click.echo("\nusage: wsp guide <topic>")
+            return
+        if topic not in GUIDE_TOPICS:
+            raise errors.WspError(
+                code="WSP_010",
+                category="input",
+                cause=f"Unknown guide topic '{topic}'.",
+                remediation=f"Use one of: {', '.join(GUIDE_TOPICS.keys())}.",
+                details={"topic": topic, "available": list(GUIDE_TOPICS.keys())},
+            )
+        text = resources.files("wsp.guides").joinpath(f"{topic}.md").read_text(encoding="utf-8")
+        click.echo(text)
+    except errors.WspError as exc:
+        _emit_error(exc, as_json)
+
+
+@main.command(name="migrate-deploy")
+@click.argument("product")
+@click.option("--json", "as_json", is_flag=True)
+def migrate_deploy_cmd(product: str, as_json: bool) -> None:
+    """Upgrade a deploy/1 spec to deploy/2 in the cached stack repo + write a patched copy.
+
+    Adds a single-element `targets_available: [<existing target>]` to each
+    component (conservative; user can broaden manually before PR).
+    """
+    try:
+        result = _migrate_deploy(product)
+        if as_json:
+            _emit(result, as_json=True)
+        else:
+            click.echo(
+                f"migrated: {result['component_count']} components to deploy/2. "
+                f"Patched file: {result['patched_path']}. "
+                f"Review and PR to {result['stack_repo']}."
+            )
+    except errors.WspError as exc:
+        _emit_error(exc, as_json)
+
+
+def _migrate_deploy(product: str) -> dict[str, Any]:
+    import tempfile
+
+    reg = registry.load_registry()
+    if product in reg.shortcuts:
+        full = reg.shortcuts[product]
+    else:
+        full = f"{product}/agent-stack"
+    org, repo = full.split("/", 1)
+    cache, _gres = git_ops.ensure_repo(org, repo)
+    deploy_yml = cache / "deploy.yml"
+    if not deploy_yml.exists():
+        raise errors.WspError(
+            code="WSP_022", category="filesystem",
+            cause=f"No deploy.yml at {deploy_yml}.",
+            remediation=f"Author one for {product} first.",
+        )
+    raw = yaml.safe_load(deploy_yml.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise errors.WspError(
+            code="WSP_023", category="schema",
+            cause=f"deploy.yml is not a mapping.",
+            remediation="Fix the file.",
+        )
+    if raw.get("schema") == "deploy/2":
+        return {
+            "stack_repo": full,
+            "patched_path": str(deploy_yml),
+            "component_count": len(raw.get("components") or []),
+            "noop": True,
+        }
+    raw["schema"] = "deploy/2"
+    components = raw.get("components") or []
+    for c in components:
+        if "targets_available" not in c and "target" in c:
+            c["targets_available"] = [c["target"]]
+    raw["components"] = components
+    out = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yml", prefix=f"deploy-{product}-v2-", delete=False, encoding="utf-8"
+    )
+    out.write(yaml.safe_dump(raw, sort_keys=False))
+    out.close()
+    deploy_yml.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    return {
+        "stack_repo": full,
+        "patched_path": out.name,
+        "cache_path": str(deploy_yml),
+        "component_count": len(components),
+        "noop": False,
+    }
 
 
 @main.command()

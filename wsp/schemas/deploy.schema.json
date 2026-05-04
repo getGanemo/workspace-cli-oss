@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/getGanemo/workspace-cli/wsp/schemas/deploy.schema.json",
+  "$id": "https://github.com/getGanemo/workspace-cli-oss/wsp/schemas/deploy.schema.json",
   "title": "AWaC <product>/agent-stack/deploy.yml",
-  "description": "Per-product deploy spec consumed by the universal `deploy_product` workflow router. Each product declares the components that get deployed, the order, and which target each one uses. The target sub-block is interpreted by the topical workflow for that target (e.g. deploy_to_odoo_sh, deploy_to_aws_ecs).",
+  "description": "Per-product deploy spec. Schema deploy/2 clarifies the two-layer model: every field of a component is a STACK DEFAULT that can be overridden per-workspace via workspace.yml#deploy_overrides (workspace wins). Optionally a component declares `targets_available` to constrain which target the workspace may swap to. The CLI merges stack defaults with workspace overrides before passing the resolved plan to the deploy_product workflow router. deploy/1 specs are still accepted by `wsp deploy` (read as schema deploy/2 with no `targets_available` lists); `wsp migrate-deploy <product>` upgrades a v1 spec to v2 in place.",
   "type": "object",
   "required": ["schema", "product", "components"],
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "deploy/1"
+      "enum": ["deploy/1", "deploy/2"]
     },
     "product": {
       "type": "string",
@@ -31,7 +31,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Stable identifier of the component. Snake_case or kebab-case."
+          "description": "Stable identifier of the component. Snake_case or kebab-case. Stable across deploy.yml revisions because workspaces reference it in deploy_overrides."
         },
         "target": {
           "type": "string",
@@ -45,36 +45,58 @@
             "github_pages",
             "manual"
           ],
-          "description": "Target type. The router workflow delegates to the matching topical workflow (deploy_to_<target>.md)."
+          "description": "Default target type. Overridable per-workspace if `targets_available` permits it."
+        },
+        "targets_available": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "odoo_sh",
+              "aws_ecs",
+              "aws_lambda",
+              "aws_ec2_ssm",
+              "cloudflare_pages",
+              "cloudflare_workers",
+              "github_pages",
+              "manual"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "Optional. List of targets this component can be deployed to. When present, workspace.yml#deploy_overrides[<name>].target may only be one of these. When absent, the workspace can override target to any supported value (use cautiously)."
         },
         "repo": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
-          "description": "GitHub repo (org/name) that holds the source. Optional when the component is cross-repo."
+          "description": "Default GitHub repo (org/name) that holds the source. Overridable per-workspace."
         },
         "requires_human_approval": {
           "type": "boolean",
           "default": true,
-          "description": "When true, the deploy router PAUSES before pushing this component and waits for an explicit human ack. Default true — opt out only for low-risk targets like preview deploys."
+          "description": "When true, the deploy router PAUSES before pushing this component and waits for an explicit human ack. Default true. Overridable per-workspace (e.g. set false for an internal preview environment)."
         },
         "pre_steps": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Workflow IDs that MUST pass before the deploy proceeds. e.g. run_tests_local, run_odoo_tests_docker_wsl, terraform_plan."
+          "description": "Workflow IDs that MUST pass before the deploy proceeds. Stack default; workspace override REPLACES the list (does not merge)."
         },
         "promote_after_pass": {
           "type": "array",
           "items": { "$ref": "#/$defs/promotion" },
-          "description": "After the target acks success, push to these additional locations. Used for the Odoo flow (push to odoo_sh staging first, then to canonical repo branch)."
+          "description": "After the target acks success, push to these additional locations. Stack default; workspace override REPLACES the list."
         },
         "rollback_window_minutes": {
           "type": "integer",
           "minimum": 0,
-          "description": "How many minutes the agent should monitor post-deploy for rollback signals."
+          "description": "How many minutes the agent should monitor post-deploy for rollback signals. Overridable per-workspace."
         },
         "odoo_sh": { "$ref": "#/$defs/odoo_sh_target" },
         "aws_ecs": { "$ref": "#/$defs/aws_ecs_target" },
-        "cloudflare_pages": { "$ref": "#/$defs/cloudflare_pages_target" }
+        "aws_lambda": { "$ref": "#/$defs/aws_lambda_target" },
+        "aws_ec2_ssm": { "$ref": "#/$defs/aws_ec2_ssm_target" },
+        "cloudflare_pages": { "$ref": "#/$defs/cloudflare_pages_target" },
+        "cloudflare_workers": { "$ref": "#/$defs/cloudflare_workers_target" },
+        "github_pages": { "$ref": "#/$defs/github_pages_target" }
       }
     },
     "promotion": {
@@ -93,6 +115,7 @@
     "odoo_sh_target": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Stack defaults for the odoo_sh target. Workspace override merges field-by-field (workspace wins per field; modules list REPLACES).",
       "properties": {
         "project": { "type": "string", "description": "Odoo.SH project slug." },
         "branch":  { "type": "string", "description": "Odoo.SH branch (main / staging / development)." },
@@ -111,12 +134,45 @@
         "image_repo": { "type": "string" }
       }
     },
+    "aws_lambda_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "function_name": { "type": "string" },
+        "region": { "type": "string" }
+      }
+    },
+    "aws_ec2_ssm_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": { "type": "string" },
+        "region": { "type": "string" },
+        "document_name": { "type": "string" }
+      }
+    },
     "cloudflare_pages_target": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "project_name": { "type": "string" },
         "production_branch": { "type": "string", "default": "main" }
+      }
+    },
+    "cloudflare_workers_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "worker_name": { "type": "string" },
+        "account_id": { "type": "string" }
+      }
+    },
+    "github_pages_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "branch": { "type": "string", "default": "gh-pages" },
+        "cname": { "type": "string" }
       }
     }
   }

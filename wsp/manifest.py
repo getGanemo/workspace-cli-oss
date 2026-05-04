@@ -10,7 +10,7 @@ import yaml
 
 from wsp import errors
 
-SUPPORTED_SCHEMAS = ["awac/1"]
+SUPPORTED_SCHEMAS = ["awac/1", "awac/2"]
 
 
 @dataclass
@@ -47,6 +47,9 @@ class Manifest:
     extra_repos: list[ExtraRepo] = field(default_factory=list)
     modules: list[str] = field(default_factory=list)
     agent_context_override: dict[str, Any] | None = None
+    deploy_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    devvault_overrides: dict[str, str] = field(default_factory=dict)
+    product: str | None = None
     path: Path | None = None
 
 
@@ -118,6 +121,46 @@ def load_manifest(path: Path) -> Manifest:
         )
 
     agent_ctx = raw.get("agent_context")
+
+    deploy_overrides_raw = raw.get("deploy_overrides") or {}
+    if not isinstance(deploy_overrides_raw, dict):
+        raise errors.manifest_invalid(
+            f"'deploy_overrides' must be a mapping, got {type(deploy_overrides_raw).__name__}.",
+            str(path),
+        )
+    for comp_name, comp_overrides in deploy_overrides_raw.items():
+        if not isinstance(comp_overrides, dict):
+            raise errors.manifest_invalid(
+                f"deploy_overrides[{comp_name!r}] must be a mapping, got "
+                f"{type(comp_overrides).__name__}.",
+                str(path),
+            )
+
+    devvault_overrides_raw = raw.get("devvault_overrides") or {}
+    if not isinstance(devvault_overrides_raw, dict):
+        raise errors.manifest_invalid(
+            f"'devvault_overrides' must be a mapping, got "
+            f"{type(devvault_overrides_raw).__name__}.",
+            str(path),
+        )
+    for sname, spath in devvault_overrides_raw.items():
+        if not isinstance(spath, str):
+            raise errors.manifest_invalid(
+                f"devvault_overrides[{sname!r}] must be a string path, got "
+                f"{type(spath).__name__}.",
+                str(path),
+            )
+
+    if (deploy_overrides_raw or devvault_overrides_raw) and schema == "awac/1":
+        raise errors.overrides_require_awac_v2(schema)
+
+    product_raw = raw.get("product")
+    if product_raw is not None and not isinstance(product_raw, str):
+        raise errors.manifest_invalid(
+            f"'product' must be a string, got {type(product_raw).__name__}.",
+            str(path),
+        )
+
     return Manifest(
         name=name,
         schema=schema,
@@ -126,6 +169,9 @@ def load_manifest(path: Path) -> Manifest:
         extra_repos=extras,
         modules=modules,
         agent_context_override=agent_ctx if isinstance(agent_ctx, dict) else None,
+        deploy_overrides=dict(deploy_overrides_raw),
+        devvault_overrides=dict(devvault_overrides_raw),
+        product=product_raw,
         path=path,
     )
 

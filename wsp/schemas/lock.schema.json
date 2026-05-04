@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/getGanemo/workspace-cli/schemas/lock.schema.json",
+  "$id": "https://github.com/getGanemo/workspace-cli-oss/schemas/lock.schema.json",
   "title": "AWaC workspace.lock.yml",
   "type": "object",
   "required": ["schema", "generated_at", "stacks"],
   "properties": {
-    "schema": { "type": "string", "enum": ["awac/1"] },
+    "schema": { "type": "string", "enum": ["awac/1", "awac/2"] },
     "generated_at": { "type": "string", "format": "date-time" },
     "wsp_version": { "type": "string" },
     "stacks": {
@@ -30,6 +30,22 @@
           "ref": { "type": "string" },
           "commit": { "type": "string" },
           "path": { "type": "string" }
+        }
+      }
+    },
+    "stack_metadata": {
+      "type": "array",
+      "description": "Hashes of stack metadata files materialized into the workspace under .stack/<product>/. Used by `wsp doctor` step `stack_metadata_drift` to detect uncommitted local edits to a stack catalog. Present only when the workspace is built from a stack that publishes a product (devvault.yml / deploy.yml / awac.yml / README.md).",
+      "items": {
+        "type": "object",
+        "required": ["product", "file", "sha256", "source_repo", "source_commit"],
+        "additionalProperties": false,
+        "properties": {
+          "product": { "type": "string" },
+          "file": { "type": "string", "description": "Workspace-relative path under .stack/<product>/" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "source_repo": { "type": "string" },
+          "source_commit": { "type": "string" }
         }
       }
     }

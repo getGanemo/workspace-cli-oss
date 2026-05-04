@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/getGanemo/workspace-cli/schemas/workspace.schema.json",
+  "$id": "https://github.com/getGanemo/workspace-cli-oss/schemas/workspace.schema.json",
   "title": "AWaC workspace.yml",
+  "description": "Workspace manifest. Schema awac/2 adds optional `deploy_overrides` and `devvault_overrides` so a workspace can pin per-feature variations (e.g. test workspace pointing to staging) without editing the canonical stack metadata. awac/1 manifests are still accepted by the CLI; schema awac/2 is required only when overrides are present.",
   "type": "object",
   "required": ["name", "schema", "stacks"],
   "properties": {
@@ -12,8 +13,8 @@
     },
     "schema": {
       "type": "string",
-      "enum": ["awac/1"],
-      "description": "AWaC schema version this manifest conforms to."
+      "enum": ["awac/1", "awac/2"],
+      "description": "AWaC schema version this manifest conforms to. Use awac/2 when declaring deploy_overrides or devvault_overrides."
     },
     "stacks": {
       "type": "array",
@@ -80,6 +81,48 @@
           "items": { "type": "string" }
         }
       }
+    },
+    "deploy_overrides": {
+      "type": "object",
+      "description": "Per-component overrides that the CLI merges on top of <product>/agent-stack/deploy.yml (workspace wins). Keyed by component name. Any field of the stack component may be overridden — e.g. swap a test workspace's odoo_sh project to staging, redirect a promote_after_pass branch, skip a component in this workspace, etc. Requires schema awac/2.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "skip": {
+            "type": "boolean",
+            "description": "Skip this component in this workspace's deploys. Useful for test/staging workspaces that only touch a subset."
+          },
+          "target": {
+            "type": "string",
+            "description": "Override the target type. Must be in the stack component's `targets_available` list when that field is set."
+          },
+          "repo": { "type": "string" },
+          "requires_human_approval": { "type": "boolean" },
+          "pre_steps": { "type": "array", "items": { "type": "string" } },
+          "rollback_window_minutes": { "type": "integer", "minimum": 0 },
+          "promote_after_pass": { "type": "array" },
+          "odoo_sh": { "type": "object" },
+          "aws_ecs": { "type": "object" },
+          "aws_lambda": { "type": "object" },
+          "aws_ec2_ssm": { "type": "object" },
+          "cloudflare_pages": { "type": "object" },
+          "cloudflare_workers": { "type": "object" },
+          "github_pages": { "type": "object" }
+        }
+      }
+    },
+    "devvault_overrides": {
+      "type": "object",
+      "description": "Per-secret path overrides applied on top of <product>/agent-stack/devvault.yml (workspace wins). Keyed by logical secret name. Useful when this workspace should resolve a logical secret to a sub-vault (e.g. staging credentials) without changing the catalog. Requires schema awac/2.",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Alternative path (relative to ~/.devvault/<vault_path>/) for this logical secret in this workspace."
+      }
+    },
+    "product": {
+      "type": "string",
+      "description": "Optional. The product slug this workspace targets, used by `wsp deploy` and `wsp secrets check` when invoked without an explicit product argument. When omitted, the CLI infers from the first product-bearing stack in `stacks`."
     }
   },
   "additionalProperties": true

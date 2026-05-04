@@ -80,9 +80,16 @@ def test_deploy_schema_rejects_missing_components():
         jsonschema.validate(spec, s)
 
 
-def test_deploy_schema_rejects_wrong_schema_const():
+def test_deploy_schema_accepts_v2():
+    """deploy/2 is now a supported schema constant (alongside deploy/1)."""
     s = _schema("deploy.schema.json")
     spec = {"schema": "deploy/2", "product": "x", "components": [{"name": "a", "target": "manual"}]}
+    jsonschema.validate(spec, s)
+
+
+def test_deploy_schema_rejects_unknown_schema_const():
+    s = _schema("deploy.schema.json")
+    spec = {"schema": "deploy/3", "product": "x", "components": [{"name": "a", "target": "manual"}]}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(spec, s)
 

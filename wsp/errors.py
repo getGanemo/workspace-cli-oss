@@ -144,3 +144,87 @@ def schema_version_unsupported(found: str, supported: list[str]) -> WspError:
         remediation=f"Upgrade wsp or downgrade the manifest. Supported: {', '.join(supported)}.",
         details={"found": found, "supported": supported},
     )
+
+
+def overrides_require_awac_v2(current_schema: str) -> WspError:
+    return WspError(
+        code="WSP_018",
+        category="schema",
+        cause=(
+            f"deploy_overrides/devvault_overrides require schema awac/2; "
+            f"current is {current_schema}"
+        ),
+        remediation="Set 'schema: awac/2' at the top of your workspace.yml.",
+        details={"current_schema": current_schema, "required_schema": "awac/2"},
+    )
+
+
+def override_target_not_available(
+    component: str, attempted_target: str, available: list[str]
+) -> WspError:
+    return WspError(
+        code="WSP_019",
+        category="schema",
+        cause=(
+            f"workspace deploy_override sets target={attempted_target} for "
+            f"component {component}, but stack only allows "
+            f"targets_available={available}"
+        ),
+        remediation=(
+            "Choose one of the available targets, or update the stack's "
+            "targets_available list (canonical change in the stack repo)."
+        ),
+        details={
+            "component": component,
+            "attempted": attempted_target,
+            "available": available,
+        },
+    )
+
+
+def product_template_requires_confirmation(
+    template: str,
+    composes_stacks: list[str] | None = None,
+    clones_repos: list[str] | None = None,
+) -> WspError:
+    composes_stacks = composes_stacks or []
+    clones_repos = clones_repos or []
+    impact_bits: list[str] = []
+    if clones_repos:
+        impact_bits.append(f"clones_repos={clones_repos}")
+    if composes_stacks:
+        impact_bits.append(f"composes_stacks={composes_stacks}")
+    impact = (" Impact: " + "; ".join(impact_bits) + ".") if impact_bits else ""
+    return WspError(
+        code="WSP_020",
+        category="input",
+        cause=(
+            f"Template {template!r} is a product-specific template. "
+            "It will clone product repos and embed this workspace in the "
+            f"product's deploy/secrets flow.{impact}"
+        ),
+        remediation=(
+            "Confirm with --yes if intentional, or use --interactive to choose. "
+            "To see the impact: 'wsp templates --json' shows clones_repos and "
+            "composes_stacks for each template."
+        ),
+        details={
+            "template": template,
+            "composes_stacks": composes_stacks,
+            "clones_repos": clones_repos,
+        },
+    )
+
+
+def stack_metadata_drift(drifted_files: list[str]) -> WspError:
+    return WspError(
+        code="WSP_021",
+        category="schema",
+        cause=f"{len(drifted_files)} stack metadata file(s) drifted from lock: {drifted_files}",
+        remediation=(
+            "Edit canonical files in the stack repo, push, then 'wsp sync' "
+            "here. To intentionally diverge for this workspace, use "
+            "workspace.yml#deploy_overrides or #devvault_overrides instead."
+        ),
+        details={"drifted_files": drifted_files},
+    )

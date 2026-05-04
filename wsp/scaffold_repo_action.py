@@ -75,7 +75,7 @@ For `agent-stack/` and `project_management/`: 'no deploy' — direct edits + PR.
 
 - Governance: <https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md>
 - Product project_management: <https://github.com/{full.split('/')[0]}/project_management>
-- AWaC CLI: <https://github.com/getGanemo/workspace-cli>
+- AWaC CLI: <https://github.com/getGanemo/workspace-cli-oss>
 """
     return body
 

@@ -8,6 +8,7 @@ composes `.agents/`, regenerates CLAUDE.md / AGENTS.md, and writes
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,114 @@ from wsp.manifest import (
     load_stack_awac,
 )
 from wsp.registry import Registry, StackRef
+
+
+STACK_METADATA_FILES = ("README.md", "awac.yml", "devvault.yml", "deploy.yml")
+
+
+def _yaml_header(source_repo: str, commit: str | None) -> str:
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    short = (commit or "unknown")[:8]
+    return (
+        "# ─────────────────────────────────────────────────────────────────────────\n"
+        f"# SYNCED FROM {source_repo} on {today} (commit {short}).\n"
+        "# This is a read-only mirror of the canonical file in the stack repo.\n"
+        "# Edit the canonical version in the stack repo and run `wsp sync` to\n"
+        "# refresh this mirror. `wsp doctor` reports if you edit this file\n"
+        "# locally without syncing back to the stack.\n"
+        "# For per-workspace variations (e.g. test environments), use\n"
+        "# workspace.yml#deploy_overrides or #devvault_overrides instead.\n"
+        "# ─────────────────────────────────────────────────────────────────────────\n"
+    )
+
+
+def _markdown_header(source_repo: str, commit: str | None) -> str:
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    short = (commit or "unknown")[:8]
+    return (
+        "<!--\n"
+        f"SYNCED FROM {source_repo} on {today} (commit {short}).\n"
+        "This is a read-only mirror of the canonical file in the stack repo.\n"
+        "Edit the canonical version in the stack repo and run `wsp sync` to\n"
+        "refresh this mirror. `wsp doctor` reports if you edit this file\n"
+        "locally without syncing back to the stack.\n"
+        "For per-workspace variations (e.g. test environments), use\n"
+        "workspace.yml#deploy_overrides or #devvault_overrides instead.\n"
+        "-->\n"
+    )
+
+
+def _header_for(file_name: str, source_repo: str, commit: str | None) -> str:
+    if file_name.endswith(".md"):
+        return _markdown_header(source_repo, commit)
+    return _yaml_header(source_repo, commit)
+
+
+def _strip_synced_header(text: str) -> str:
+    """Inverse of prepending a SYNCED-FROM header. Returns body POST-header.
+
+    Recognises both YAML-comment and HTML-comment header forms. If no
+    recognisable header is present, returns the original text untouched.
+    """
+    if not text:
+        return text
+    if text.startswith("<!--"):
+        end = text.find("-->")
+        if end != -1:
+            after = text[end + 3 :]
+            if after.startswith("\n"):
+                after = after[1:]
+            return after
+        return text
+    # YAML form: leading block of `#`-prefixed lines (header) + then content
+    lines = text.split("\n")
+    if not lines or not lines[0].startswith("#"):
+        return text
+    # Detect the SYNCED-FROM marker; if not present, do not strip.
+    if not any("SYNCED FROM" in ln for ln in lines[:12]):
+        return text
+    # Strip the entire leading block of consecutive comment/blank lines.
+    i = 0
+    while i < len(lines) and (lines[i].startswith("#") or lines[i].strip() == ""):
+        i += 1
+    return "\n".join(lines[i:])
+
+
+def materialize_stack_metadata(
+    workspace_root: Path,
+    product: str,
+    cache_path: Path,
+    source_repo: str,
+    source_commit: str | None,
+) -> list[dict[str, Any]]:
+    """Copy stack metadata files into <workspace>/.stack/<product>/ with a header.
+
+    Returns a list of lock entries for stack_metadata: dicts with keys
+    {product, file, sha256, source_repo, source_commit}. The hash is over
+    the original file body in the cache (not the header-prepended copy).
+    """
+    out: list[dict[str, Any]] = []
+    target_dir = workspace_root / ".stack" / product
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for fname in STACK_METADATA_FILES:
+        src = cache_path / fname
+        if not src.exists() or not src.is_file():
+            continue
+        body = src.read_text(encoding="utf-8")
+        sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        header = _header_for(fname, source_repo, source_commit)
+        target = target_dir / fname
+        target.write_text(header + body, encoding="utf-8")
+        out.append(
+            {
+                "product": product,
+                "file": f".stack/{product}/{fname}",
+                "sha256": sha,
+                "source_repo": source_repo,
+                "source_commit": source_commit or "",
+            }
+        )
+    return out
 
 
 @dataclass
@@ -53,6 +162,7 @@ class BootstrapResult:
     file_count: int = 0
     collisions: list[dict[str, str]] = field(default_factory=list)
     lock_path: str = ""
+    stack_metadata: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -83,6 +193,7 @@ class BootstrapResult:
             "file_count": self.file_count,
             "collisions": self.collisions,
             "lock": self.lock_path,
+            "stack_metadata": list(self.stack_metadata),
         }
 
 
@@ -143,6 +254,16 @@ def run_bootstrap(workspace_root: Path, manifest: Manifest, registry: Registry) 
             result.stacks.append(
                 StackResolution(label=label, ref=ref, branch="main", commit=gres.commit, cache_path=local)
             )
+            if sa.product:
+                result.stack_metadata.extend(
+                    materialize_stack_metadata(
+                        workspace_root,
+                        product=sa.product,
+                        cache_path=local,
+                        source_repo=ref.full,
+                        source_commit=gres.commit,
+                    )
+                )
             for mod_repo in _resolve_module_repos(entry, odoo_module_convention):
                 manifest.extra_repos.append(mod_repo)
             continue
@@ -157,6 +278,16 @@ def run_bootstrap(workspace_root: Path, manifest: Manifest, registry: Registry) 
         result.stacks.append(
             StackResolution(label=label, ref=ref, branch="main", commit=gres.commit, cache_path=local)
         )
+        if sa.product:
+            result.stack_metadata.extend(
+                materialize_stack_metadata(
+                    workspace_root,
+                    product=sa.product,
+                    cache_path=local,
+                    source_repo=ref.full,
+                    source_commit=gres.commit,
+                )
+            )
 
         for repo_decl in sa.repos:
             org, repo_name, branch, path = _path_for_stack_repo(repo_decl, default_org=ref.org)
@@ -236,8 +367,9 @@ def run_bootstrap(workspace_root: Path, manifest: Manifest, registry: Registry) 
     result.canonical = written_canonical
     result.mirrors = mirrors_written
 
-    lock = {
-        "schema": "awac/1",
+    lock_schema = "awac/2" if result.stack_metadata else "awac/1"
+    lock: dict[str, Any] = {
+        "schema": lock_schema,
         "generated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "wsp_version": WSP_VERSION,
         "stacks": [
@@ -249,6 +381,8 @@ def run_bootstrap(workspace_root: Path, manifest: Manifest, registry: Registry) 
             for r in result.repos
         ],
     }
+    if result.stack_metadata:
+        lock["stack_metadata"] = result.stack_metadata
     lock_path = workspace_root / "workspace.lock.yml"
     lock_path.write_text(
         "# Generated by wsp. Do not edit by hand.\n"

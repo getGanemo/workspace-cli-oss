@@ -28,10 +28,10 @@ def _seed_stack(root: Path, files: dict[str, str], awac: dict | None = None) -> 
 def _make_registry() -> Registry:
     return Registry(
         raw={},
-        repo="getGanemo/agent-stack-core",
+        repo="getGanemo/agent-stack-core-oss",
         branch="main",
         local_path=Path("/dev/null"),
-        shortcuts={"core": "getGanemo/agent-stack-core"},
+        shortcuts={"core": "getGanemo/agent-stack-core-oss"},
         templates=[],
         agent_context={"canonical": "CLAUDE.md", "mirrors": ["AGENTS.md"]},
     )
