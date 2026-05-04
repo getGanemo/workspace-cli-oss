@@ -4,6 +4,21 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-04
+
+Discoverability fix release. Captured during dogfooding: an agent in a fresh dir told to "set up this workspace using AWaC" searched for `awac` in PATH (not `wsp`), didn't find it, and reported the CLI as unavailable. Root cause: the binary is named `wsp` but the product is "AWaC" — agents without context don't make the connection.
+
+### Added
+- **Binary alias**: `awac` is now installed alongside `wsp` (same entry point). `pipx install` installs both. `awac --version` and `wsp --version` work identically.
+- The site homepage at https://awac.ganemo.com gains a paste-ready prompt block — users copy it once into their agent and the agent installs the CLI, runs `wsp guide`, asks the right questions, and composes the workspace without inferring template from folder name.
+
+### Changed
+- `pyproject.toml#scripts` adds `awac = "wsp.cli:main"`. No code change.
+
+### Migration
+- Existing `wsp` users: nothing to do; `wsp` keeps working identically.
+- Optional: rerun `pipx install --force <wheel>` to pick up the new `awac` alias.
+
 ## [1.1.0] — 2026-05-04
 
 A workspace-as-product overlay release. Schemas `workspace/2` and `deploy/2` are introduced (alongside `awac/1` + `deploy/1`, which remain fully supported), giving workspaces a way to pin per-workspace deploy and devvault variations without forking the canonical stack metadata. Bootstrap also now materializes the product stack's metadata into `.stack/<product>/` for discoverability, and a new `wsp guide <topic>` command + a fresh-dir help banner make AWaC self-explanatory to agents that arrive without `.agents/` loaded.
@@ -139,7 +154,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v0.9.0...v1.0.0
 [0.9.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v0.8.0...v0.9.0
