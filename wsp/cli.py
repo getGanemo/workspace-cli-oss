@@ -233,9 +233,23 @@ def _print_agent_manifest(ctx: click.Context, _param: click.Parameter, value: bo
     callback=_print_agent_manifest,
     help="Print machine-readable command catalog.",
 )
+@click.option(
+    "--no-update-check",
+    is_flag=True,
+    expose_value=False,
+    callback=lambda ctx, _p, v: os.environ.setdefault("WSP_NO_UPDATE_CHECK", "1") if v else None,
+    help="Skip the daily check for newer releases (also: WSP_NO_UPDATE_CHECK=1).",
+)
 @click.pass_context
 def main(ctx: click.Context) -> None:
     """wsp — Agent Workspace as Code (AWaC) CLI."""
+    # Best-effort daily update check. Never blocks.
+    try:
+        from wsp import update_check
+        update_check.emit_update_warning_if_any(WSP_VERSION)
+    except Exception:
+        pass
+
     if ctx.invoked_subcommand is None:
         if not (Path.cwd() / "workspace.yml").exists():
             click.echo("You are in an empty workspace. To get started:")

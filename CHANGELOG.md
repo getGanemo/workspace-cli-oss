@@ -4,6 +4,22 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-04
+
+Closes the "user has v1.0.0 and doesn't know about gates added in v1.1.0+" class of bugs. Each `wsp <command>` invocation now does a best-effort daily check against GitHub Releases and warns on stderr if a newer version is available.
+
+### Added
+- `wsp/update_check.py` — best-effort daily check via `gh api repos/.../releases/latest`. Cached for 24h. Never blocks: any failure (network, auth, parse) silently swallowed.
+- `--no-update-check` flag and `WSP_NO_UPDATE_CHECK=1` env var to opt out (CI, sandboxed envs, privacy).
+- 9 new tests.
+
+### Changed
+- Every `wsp <command>` invocation triggers the check at startup (max once per 24h).
+
+### Notes
+- Privacy: only outbound call is to `api.github.com/repos/getGanemo/workspace-cli-oss/releases/latest` via `gh api`. No machine identifiers, no telemetry.
+- Cached state in `~/.wsp/last_update_check.json` (only `checked_at` timestamp + last `latest` tag).
+
 ## [1.3.0] — 2026-05-04
 
 Self-contained agent onboarding. Adds `awac guide quickstart` — an embedded paste-ready prompt that walks an agent through install detection, self-orientation, and workspace scaffolding without requiring the user to copy a long prompt from the docs site.
@@ -182,7 +198,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.1.0...v1.2.0
