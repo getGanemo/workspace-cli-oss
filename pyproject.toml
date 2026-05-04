@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wsp"
-version = "1.2.0"
+version = "1.2.1"
 description = "wsp — the AWaC (Agent Workspace as Code) CLI. Compose AI-agent workspaces declaratively from versioned stack repos."
 readme = "README.md"
 requires-python = ">=3.10"

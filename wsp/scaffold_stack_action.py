@@ -31,7 +31,7 @@ from typing import Any
 
 import yaml
 
-from wsp import errors, git_ops
+from wsp import errors, git_ops, registry
 from wsp.registry import Registry
 
 
@@ -267,20 +267,19 @@ def _render_awac_yml(
     unclassified = [c for c in classified if c.category == "unclassified"]
 
     lines: list[str] = []
+    governance_doc = registry.governance_doc_url()
+    registry_repo = os.environ.get("WSP_REGISTRY_REPO", registry.DEFAULT_REGISTRY_REPO)
     lines.append(f"### Agent Workspace as Code — {product.capitalize()} stack")
     lines.append("#")
     lines.append(f"# Standard repos of the {product} product, declared per the")
     lines.append("# governance at:")
-    lines.append("#   getGanemo/docs-company/governance/product-structure.md")
-    lines.append("#   getGanemo/agent-stack-core-oss/awac.yml#org_scaffold")
+    lines.append(f"#   {governance_doc}")
+    lines.append(f"#   {registry_repo}/awac.yml#org_scaffold")
     lines.append("#")
     lines.append(
         f"# Re-run `wsp scaffold-stack {org} --update` to refresh from GitHub when"
     )
-    lines.append("# new repos appear in the org or matching Odoo modules are added")
-    lines.append("# in erp-partners.")
-    lines.append("#")
-    lines.append("# Owner: Fernando Pastor (GanemoCorp)")
+    lines.append("# new repos appear in the org or matching Odoo modules are added.")
     lines.append("")
     lines.append(f"product: {product}")
     lines.append(f"scope: {product}-saas")
@@ -372,7 +371,7 @@ def _render_readme(org: str, product: str) -> str:
         f"Agent capabilities for the **{product}** product.\n\n"
         "## Contents\n\n"
         "- `awac.yml` — product manifest declaring standard repos (Cat A–E per "
-        "[governance](https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md)).\n"
+        f"[governance]({registry.governance_doc_url()})).\n"
         "- `templates/feature.yml` — starter `workspace.yml` for `wsp init "
         f"--template {product}-feature`.\n"
         "- `.agents/{rules,skills,workflows}/` — composed into product workspaces by `wsp bootstrap` / `wsp sync`.\n\n"

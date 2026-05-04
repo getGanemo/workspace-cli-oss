@@ -18,6 +18,19 @@ from wsp import errors, git_ops
 DEFAULT_REGISTRY_REPO = "getGanemo/agent-stack-core-oss"
 DEFAULT_REGISTRY_BRANCH = "main"
 
+# Where seed READMEs and scaffold-stack output point users to read about
+# governance conventions. Override with WSP_GOVERNANCE_DOC when adopting AWaC
+# for an organization with its own governance document.
+DEFAULT_GOVERNANCE_DOC = "https://awac.ganemo.com/governance/"
+
+
+def governance_doc_url() -> str:
+    """Resolve the governance doc URL the CLI references in seed output.
+
+    Order: WSP_GOVERNANCE_DOC env var > DEFAULT_GOVERNANCE_DOC.
+    """
+    return os.environ.get("WSP_GOVERNANCE_DOC", DEFAULT_GOVERNANCE_DOC)
+
 
 import re as _re
 

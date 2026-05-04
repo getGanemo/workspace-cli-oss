@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from wsp import errors
+from wsp import errors, registry as _registry
 
 
 CATEGORIES = ("A", "B", "C", "D", "E")
@@ -48,6 +48,7 @@ class CategorySpec:
 
 
 def _tpl_a(full: str, product: str, repo: str) -> str:
+    governance_doc = _registry.governance_doc_url()
     body = f"""# {full}
 
 `{repo}` of the **{product}** product. Categoría A — gobierno y operaciones.
@@ -73,7 +74,7 @@ For `agent-stack/` and `project_management/`: 'no deploy' — direct edits + PR.
 
 ## Cross-references
 
-- Governance: <https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md>
+- Governance: <{governance_doc}>
 - Product project_management: <https://github.com/{full.split('/')[0]}/project_management>
 - AWaC CLI: <https://github.com/getGanemo/workspace-cli-oss>
 """
@@ -81,6 +82,7 @@ For `agent-stack/` and `project_management/`: 'no deploy' — direct edits + PR.
 
 
 def _tpl_b(full: str, product: str, repo: str) -> str:
+    governance_doc = _registry.governance_doc_url()
     return f"""# {full}
 
 `{repo}` of the **{product}** product. Categoría B — superficie pública.
@@ -110,12 +112,13 @@ def _tpl_b(full: str, product: str, repo: str) -> str:
 
 ## Cross-references
 
-- Governance: <https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md>
+- Governance: <{governance_doc}>
 - Product project_management: <https://github.com/{full.split('/')[0]}/project_management>
 """
 
 
 def _tpl_c(full: str, product: str, repo: str) -> str:
+    governance_doc = _registry.governance_doc_url()
     return f"""# {full}
 
 `{repo}` of the **{product}** product. Categoría C — código de producto.
@@ -161,13 +164,14 @@ If it consumes one: which API and version.>
 
 ## Cross-references
 
-- Governance: <https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md>
+- Governance: <{governance_doc}>
 - Product project_management: <https://github.com/{full.split('/')[0]}/project_management>
 - Infrastructure: <https://github.com/{full.split('/')[0]}/infrastructure>
 """
 
 
 def _tpl_d(full: str, product: str, repo: str) -> str:
+    governance_doc = _registry.governance_doc_url()
     return f"""# {full}
 
 `{repo}` of the **{product}** product. Categoría D — componente opcional.
@@ -191,12 +195,13 @@ public-facing 'Quick start' for developers integrating the product.>
 
 ## Cross-references
 
-- Governance: <https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md>
+- Governance: <{governance_doc}>
 - Product project_management: <https://github.com/{full.split('/')[0]}/project_management>
 """
 
 
 def _tpl_e(full: str, product: str, repo: str) -> str:
+    governance_doc = _registry.governance_doc_url()
     return f"""# {full}
 
 Odoo module — Categoría E.
@@ -221,7 +226,7 @@ license). This README is for human navigation.
 
 ## Cross-references
 
-- Governance — Categoría E: <https://github.com/getGanemo/docs-company/blob/main/governance/product-structure.md>
+- Governance — Categoría E: <{governance_doc}>
 - Product project_management: <https://github.com/{product}/project_management>
 - Producer's agent-stack `awac.yml#repos` declares this module.
 """

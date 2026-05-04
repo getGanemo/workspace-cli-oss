@@ -4,6 +4,24 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-05-04
+
+Third-party adoption fix. The seed READMEs that `wsp scaffold-repo` and `wsp scaffold-stack` write contained hardcoded references to `getGanemo/docs-company/governance/product-structure.md` — fine for Ganemo's internal docs, broken for any other org that adopts AWaC. Now the governance URL is overridable.
+
+### Added
+- New env var `WSP_GOVERNANCE_DOC` controls the governance URL the CLI embeds in seed READMEs and scaffold output. Default: `https://awac.ganemo.com/governance/` (the public AWaC docs site). Override with your org's own governance doc URL.
+- Helper `wsp.registry.governance_doc_url()` resolves the URL via env var with fallback to the public default.
+
+### Changed
+- `wsp scaffold-repo --category <A|B|C|D|E>` seed READMEs now reference `WSP_GOVERNANCE_DOC` instead of hardcoded `getGanemo/docs-company/...`.
+- `wsp scaffold-stack` seed `awac.yml` and stack README also reference `WSP_GOVERNANCE_DOC`.
+- The seed `awac.yml` header now lists the configured `WSP_REGISTRY_REPO` (instead of hardcoding `getGanemo/agent-stack-core-oss`).
+
+### Migration
+- No action required for users who haven't run `scaffold-repo` / `scaffold-stack`.
+- Users who run these commands and want their seed output to reference their own governance doc: set `WSP_GOVERNANCE_DOC=https://your-org.example/governance` before running.
+- Output of these commands changes in v1.2.1+ (governance URL now reflects env var). Re-run on existing repos with `--update` to refresh seed text.
+
 ## [1.2.0] — 2026-05-04
 
 Discoverability fix release. Captured during dogfooding: an agent in a fresh dir told to "set up this workspace using AWaC" searched for `awac` in PATH (not `wsp`), didn't find it, and reported the CLI as unavailable. Root cause: the binary is named `wsp` but the product is "AWaC" — agents without context don't make the connection.
@@ -154,7 +172,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v0.9.0...v1.0.0
