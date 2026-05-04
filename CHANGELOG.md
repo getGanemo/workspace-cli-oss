@@ -4,6 +4,16 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-04
+
+Self-contained agent onboarding. Adds `awac guide quickstart` — an embedded paste-ready prompt that walks an agent through install detection, self-orientation, and workspace scaffolding without requiring the user to copy a long prompt from the docs site.
+
+### Added
+- `awac guide quickstart` — embedded one-stop prompt for a fresh agent session. The user installs the CLI once, then tells their agent to run `awac guide quickstart` and follow the output. Replaces the manual copy-paste-from-website flow as the canonical first-run path.
+
+### Changed
+- `awac guide` (no topic) listing now leads with `quickstart`.
+
 ## [1.2.1] — 2026-05-04
 
 Third-party adoption fix. The seed READMEs that `wsp scaffold-repo` and `wsp scaffold-stack` write contained hardcoded references to `getGanemo/docs-company/governance/product-structure.md` — fine for Ganemo's internal docs, broken for any other org that adopts AWaC. Now the governance URL is overridable.
@@ -172,7 +182,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.0.0...v1.1.0
