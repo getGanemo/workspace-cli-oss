@@ -4,6 +4,13 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-05-05
+
+Expanded `onboard-product` guide for OSS adopters. The previous one-paragraph guide was insufficient — agents needed the full 9-step plan + the 5 required inputs + the plan-before-act gate inside the guide itself.
+
+### Changed
+- `awac guide onboard-product` now ships a full 9-step playbook (~200 lines) with: required inputs upfront, plan-before-act gate (Step 2), explicit scaffold-stack + scaffold-repo invocations, devvault catalog template, governance audit step, post-onboard validation. Self-contained — no need for the agent to fetch a canonical file.
+
 ## [1.4.1] — 2026-05-05
 
 Windows ACL fix for `wsp bootstrap`. A user composing a fresh workspace on Windows had bootstrap fail at the cleanup step of `.agents/rules/` because git-cloned files were marked read-only by Windows ACL (or because an editor held a file lock). The PermissionError aborted bootstrap before product repos got cloned, leaving a half-built workspace.
@@ -212,7 +219,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.2.1...v1.3.0
