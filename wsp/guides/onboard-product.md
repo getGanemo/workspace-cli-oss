@@ -196,8 +196,16 @@ If your organization keeps a governance doc (the URL set via
 is up to your conventions — typical layout is `governance/products.md`
 with a table per product.
 
-Skip this step if your org doesn't track products in a governance doc
-yet — `awac audit` does NOT require it.
+**How to do the edit without polluting the workspace**:
+- Preferred: use `gh api -X PUT repos/<your-org>/<your-docs-repo>/contents/governance/products.md`
+  with the SHA of the existing file + base64-encoded patched content.
+  Commits directly without a local clone.
+- If you must clone, clone to `/tmp/<random>/`, edit, push, delete.
+- DO NOT `git clone` the docs repo inside the workspace dir — it leaves
+  a stale repo subfolder confusing the developer.
+
+Skip this step entirely if your org doesn't track products in a governance
+doc yet — `awac audit` does NOT require it.
 
 Then verify:
 
@@ -248,6 +256,9 @@ Report at the end:
 - **Edit your registry's `awac.yml` manually instead of via
   scaffold-stack auto-register**. The CLI does it idempotently. Set
   `WSP_REGISTRY_REPO` if your registry isn't the default.
+- **`git clone <docs-repo>` inside the workspace dir** during Step 8.
+  The clone leaves a stale repo subfolder polluting the workspace. Use
+  `gh api` direct, or clone to /tmp.
 - **Edit `.stack/<slug>/{devvault,deploy}.yml` in the workspace** to
   silence a missing-secret error. Edit canonical in `<ORG>/agent-stack`
   + `awac sync` instead.

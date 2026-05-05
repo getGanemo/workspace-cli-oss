@@ -4,6 +4,14 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-05-05
+
+Onboard-product Step 8 fix. The previous "fallback when MCP unavailable" instruction (`git clone <docs-repo>`) didn't specify where to clone, leading agents to clone into the user's workspace and pollute it. Fix: prefer `gh api -X PUT` direct (no clone), or /tmp clone with explicit cleanup.
+
+### Changed
+- `awac guide onboard-product` Step 8 rewritten to avoid clones inside the workspace.
+- Anti-patterns list now explicitly forbids cloning the docs repo inside the workspace dir.
+
 ## [1.5.0] — 2026-05-05
 
 Expanded `onboard-product` guide for OSS adopters. The previous one-paragraph guide was insufficient — agents needed the full 9-step plan + the 5 required inputs + the plan-before-act gate inside the guide itself.
@@ -219,7 +227,8 @@ Initial pilot release. CLI `wsp` is `pipx`-installable.
 - `wsp init my-feature --template <product>-feature && wsp bootstrap` clones the declared stacks plus the product repos and composes `.agents/` deterministically.
 - Lockfile is generated, idempotent. Hand-edited blocks under `.agents/` are preserved.
 
-[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/getGanemo/workspace-cli-oss/compare/v1.3.0...v1.4.0
