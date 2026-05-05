@@ -354,14 +354,17 @@ def init(name: str | None, template_name: str | None, target_path: str | None,
 
 @main.command()
 @click.option("--update-locks", is_flag=True, help="Force re-resolution and rewrite the lock.")
+@click.option("--no-clean", "no_clean", is_flag=True,
+              help="Skip wiping the existing .agents/ before composing. Useful "
+                   "on Windows when an editor holds a file lock and rmtree fails (WSP_022).")
 @click.option("--json", "as_json", is_flag=True)
-def bootstrap(update_locks: bool, as_json: bool) -> None:
+def bootstrap(update_locks: bool, no_clean: bool, as_json: bool) -> None:
     """Resolve, clone, and compose the active workspace."""
     try:
         ws_path = manifest.find_workspace_yml(Path.cwd())
         m = manifest.load_manifest(ws_path)
         reg = registry.load_registry()
-        result = bootstrap_action.run_bootstrap(Path.cwd(), m, reg)
+        result = bootstrap_action.run_bootstrap(Path.cwd(), m, reg, clean=not no_clean)
         if as_json:
             _emit(result.to_dict(), as_json=True)
         else:

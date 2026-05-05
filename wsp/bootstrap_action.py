@@ -230,7 +230,13 @@ def _path_for_stack_repo(repo_decl: dict[str, Any], default_org: str) -> tuple[s
     return org, name, branch, path
 
 
-def run_bootstrap(workspace_root: Path, manifest: Manifest, registry: Registry) -> BootstrapResult:
+def run_bootstrap(
+    workspace_root: Path,
+    manifest: Manifest,
+    registry: Registry,
+    *,
+    clean: bool = True,
+) -> BootstrapResult:
     workspace_root = Path(workspace_root).resolve()
     result = BootstrapResult()
 
@@ -336,7 +342,7 @@ def run_bootstrap(workspace_root: Path, manifest: Manifest, registry: Registry) 
             )
         )
 
-    compose_report = composer.compose_agents(workspace_root, stacks_to_compose)
+    compose_report = composer.compose_agents(workspace_root, stacks_to_compose, clean=clean)
     result.agent_dirs = compose_report.agent_dirs_written
     result.file_count = compose_report.file_count
     result.collisions = compose_report.collisions

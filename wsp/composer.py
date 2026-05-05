@@ -13,13 +13,87 @@ identical on Windows + macOS + Linux.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import stat
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 from wsp import __version__ as WSP_VERSION
+from wsp import errors
+
+
+def _robust_rmtree(path: Path, retries: int = 3) -> None:
+    """rmtree that survives Windows ACL quirks.
+
+    Strategy on PermissionError / OSError:
+      1. Walk the tree and chmod +w everything.
+      2. Retry rmtree.
+      3. If still failing after `retries` attempts, raise WspError WSP_022
+         with a remediation telling the user to close any editor with
+         files in the dir open and retry — or to delete it manually.
+
+    This is the failure mode bug #13 captured in v1.4.1: Windows users
+    running `wsp bootstrap` twice would hit a PermissionError because git
+    cloned read-only files into the cache OR because an editor held a
+    file lock on .agents/rules/<file>.
+    """
+    if not path.exists():
+        return
+
+    def _on_error(func, p, exc_info):
+        # Make writable, then retry the func once.
+        try:
+            os.chmod(p, stat.S_IWRITE | stat.S_IREAD)
+            func(p)
+        except Exception:
+            raise
+
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path, onerror=_on_error)
+            return
+        except (PermissionError, OSError) as exc:
+            last_exc = exc
+            # Walk the tree and force +w on everything before next try.
+            try:
+                for root, dirs, files in os.walk(path):
+                    for d in dirs:
+                        try:
+                            os.chmod(os.path.join(root, d), stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+                        except OSError:
+                            pass
+                    for f in files:
+                        try:
+                            os.chmod(os.path.join(root, f), stat.S_IWRITE | stat.S_IREAD)
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+            time.sleep(0.1 * (attempt + 1))
+
+    raise errors.WspError(
+        code="WSP_022",
+        category="filesystem",
+        cause=(
+            f"Could not remove {path}: {last_exc}. "
+            "On Windows this usually means an editor (VS Code / Cursor / Explorer) "
+            "has a file inside this directory open, or the directory contains "
+            "git-cloned files marked read-only by Windows ACL."
+        ),
+        remediation=(
+            f"Close any editor or terminal with files in {path} open, then retry "
+            f"`wsp bootstrap`. If it still fails, delete {path} manually "
+            "(`rmdir /s /q .agents` on Windows; `rm -rf .agents` elsewhere) "
+            "and run `wsp bootstrap` again. Alternatively: pass --no-clean "
+            "to bootstrap to skip cleanup of existing .agents/."
+        ),
+        details={"path": str(path), "last_error": str(last_exc) if last_exc else None},
+    )
 
 AGENT_DIRS = ("rules", "skills", "workflows")
 EDITABLE_START = "<!-- @awac:editable-start -->"
@@ -58,16 +132,23 @@ def _copy_subtree(src: Path, dest: Path, source_label: str, collisions: list[dic
 def compose_agents(
     workspace_root: Path,
     stacks: list[tuple[str, Path]],
+    *,
+    clean: bool = True,
 ) -> ComposeReport:
     """Copy rules/skills/workflows from each stack into <workspace>/.agents/.
 
     `stacks` is a list of (label, stack_root_path). Order matters: later wins.
+
+    When `clean=True` (default), wipes existing `.agents/` before recomposing
+    for full determinism. When `clean=False`, copies on top — useful when
+    the user wants to preserve a partially-built workspace or work around
+    Windows ACL issues (see WSP_022).
     """
     workspace_root = Path(workspace_root)
     agents_dir = workspace_root / ".agents"
-    if agents_dir.exists():
-        shutil.rmtree(agents_dir)
-    agents_dir.mkdir(parents=True)
+    if clean:
+        _robust_rmtree(agents_dir)
+    agents_dir.mkdir(parents=True, exist_ok=True)
 
     report = ComposeReport(workspace=workspace_root)
     for sub in AGENT_DIRS:
