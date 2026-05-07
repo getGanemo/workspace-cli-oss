@@ -32,7 +32,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from wsp import __schema__ as WSP_SCHEMA
 from wsp import __version__ as WSP_VERSION
-from wsp import audit_action, bootstrap_action, deploy_action, errors, git_ops, governance, manifest, registry, scaffold_repo_action, scaffold_stack_action, secrets_action, status_action, sync_action
+from wsp import audit_action, bootstrap_action, deploy_action, errors, git_ops, governance, introspect, manifest, registry, scaffold_repo_action, scaffold_stack_action, secrets_action, status_action, sync_action
 
 import hashlib
 
@@ -156,6 +156,20 @@ AGENT_MANIFEST = {
             "summary": "List stack shortcuts in the registry.",
             "options": [{"name": "--json", "type": "flag"}],
             "json_keys": ["shortcuts"],
+        },
+        {
+            "name": "cache",
+            "summary": "Inspect the wsp local cache. Subcommand: path.",
+            "args": [{"name": "subcommand", "required": True, "choices": ["path"]}],
+            "options": [{"name": "--json", "type": "flag"}],
+            "json_keys": ["path", "env_var", "exists"],
+        },
+        {
+            "name": "workspace",
+            "summary": "Inspect the current workspace (dir containing workspace.yml). Subcommands: path, info.",
+            "args": [{"name": "subcommand", "required": True, "choices": ["path", "info"]}],
+            "options": [{"name": "--json", "type": "flag"}],
+            "json_keys": ["workspace_found", "path", "manifest_path", "name", "schema", "product", "stacks", "modules", "extra_repos", "deploy_overrides_count", "devvault_overrides_count"],
         },
         {
             "name": "doctor",
@@ -829,6 +843,108 @@ def shortcuts(as_json: bool) -> None:
                 click.echo(f"{s['shortcut']:14s} → {s['target']}")
     except errors.WspError as exc:
         _emit_error(exc, as_json)
+
+
+@main.group()
+def cache() -> None:
+    """Inspect the wsp local cache (where stack repos are cloned)."""
+
+
+@cache.command("path")
+@click.option("--json", "as_json", is_flag=True)
+def cache_path_cmd(as_json: bool) -> None:
+    """Print the active cache root.
+
+    The cache root is `$WSP_CACHE_DIR` if set, otherwise `~/.wsp/cache/`
+    (NOT `~/.cache/wsp/` — common XDG-style mistake). This command always
+    reports the path the CLI actually uses, so docs/memory drift cannot
+    misdirect a manual cleanup.
+    """
+    p = introspect.cache_path()
+    if as_json:
+        _emit({
+            "path": str(p),
+            "env_var": "WSP_CACHE_DIR",
+            "exists": p.exists(),
+        }, as_json=True)
+    else:
+        click.echo(str(p))
+
+
+@main.group()
+def workspace() -> None:
+    """Inspect the current workspace (the dir containing workspace.yml)."""
+
+
+@workspace.command("path")
+@click.option("--json", "as_json", is_flag=True)
+def workspace_path_cmd(as_json: bool) -> None:
+    """Print the absolute path of the current workspace root.
+
+    Walks up from the current directory until a `workspace.yml` is found.
+    Exits non-zero (and emits a structured error) if none is found.
+    """
+    root = introspect.find_workspace_root(Path.cwd())
+    if root is None:
+        exc = errors.WspError(
+            code="WSP_022", category="filesystem",
+            cause="No workspace.yml found in the current directory or any ancestor.",
+            remediation="Run from a wsp workspace, or create one with `wsp init`.",
+            details={"searched_from": str(Path.cwd().resolve())},
+        )
+        _emit_error(exc, as_json)
+        return
+    if as_json:
+        _emit({"path": str(root)}, as_json=True)
+    else:
+        click.echo(str(root))
+
+
+@workspace.command("info")
+@click.option("--json", "as_json", is_flag=True)
+def workspace_info_cmd(as_json: bool) -> None:
+    """Print structured metadata about the current workspace.
+
+    Includes: name, schema, product (if any), declared stacks, Odoo
+    modules, extra repos, and override counts. Use --json for an
+    agent-consumable form.
+    """
+    try:
+        info = introspect.workspace_info(Path.cwd())
+    except errors.WspError as exc:
+        _emit_error(exc, as_json)
+        return
+    if not info["workspace_found"]:
+        exc = errors.WspError(
+            code="WSP_022", category="filesystem",
+            cause="No workspace.yml found in the current directory or any ancestor.",
+            remediation="Run from a wsp workspace, or create one with `wsp init`.",
+            details={"searched_from": info["searched_from"]},
+        )
+        _emit_error(exc, as_json)
+        return
+    if as_json:
+        _emit(info, as_json=True)
+    else:
+        click.echo(f"workspace: {info['name']}")
+        click.echo(f"  path:    {info['path']}")
+        click.echo(f"  schema:  {info['schema']}")
+        if info.get("product"):
+            click.echo(f"  product: {info['product']}")
+        click.echo(f"  stacks ({len(info['stacks'])}):")
+        for s in info["stacks"]:
+            if s["kind"] == "odoo_modules":
+                click.echo(f"    - odoo_modules @ {s['org']}: {', '.join(s['modules'])}")
+            else:
+                click.echo(f"    - {s['ref']}")
+        if info["extra_repos"]:
+            click.echo(f"  extra_repos ({len(info['extra_repos'])}):")
+            for e in info["extra_repos"]:
+                click.echo(f"    - {e['full']}@{e['branch']}")
+        if info["deploy_overrides_count"]:
+            click.echo(f"  deploy_overrides: {info['deploy_overrides_count']}")
+        if info["devvault_overrides_count"]:
+            click.echo(f"  devvault_overrides: {info['devvault_overrides_count']}")
 
 
 @main.command()
