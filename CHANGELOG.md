@@ -4,6 +4,19 @@ All notable changes to `wsp` are documented here. The format is based on [Keep a
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-05-06
+
+Read-only introspection commands. The CLI is now the single source of truth for its own internal paths and resolved state — no more relying on docs/memory which can drift from code (a real recent incident: an operator wiped `~/.cache/wsp/` thinking that was the cache root, when the actual default is `~/.wsp/cache/`; the wipe was a silent no-op).
+
+### Added
+- `wsp cache path [--json]` — print the active cache root, sourced from `git_ops.cache_root()`. With `--json`, also reports the env var name (`WSP_CACHE_DIR`) and whether the path exists today.
+- `wsp workspace path [--json]` — walk up from the current directory to find the workspace root (dir containing `workspace.yml`). Exits non-zero with structured error if none found.
+- `wsp workspace info [--json]` — structured snapshot of the current workspace: name, schema, product, declared stacks (with kind: stack | odoo_modules), Odoo modules, extra repos, and override counts.
+- `wsp/introspect.py` — new module with the underlying pure functions (`cache_path()`, `find_workspace_root()`, `workspace_info()`). Read-only and side-effect free; reusable by future wrappers without going through the CLI.
+
+### Why this matters
+Authoritative self-reporting closes a class of "I deleted the wrong thing" bugs caused by stale documentation and chat-message drift. Operators and agents can ask `wsp` directly.
+
 ## [1.5.1] — 2026-05-05
 
 Onboard-product Step 8 fix. The previous "fallback when MCP unavailable" instruction (`git clone <docs-repo>`) didn't specify where to clone, leading agents to clone into the user's workspace and pollute it. Fix: prefer `gh api -X PUT` direct (no clone), or /tmp clone with explicit cleanup.
